@@ -119,6 +119,14 @@ def manifest_of(conn, run_id: str) -> dict | None:
     row = store.one(conn, "SELECT * FROM runs WHERE run_id = ?", (run_id,))
     if row is None:
         return None
+    substitution_rows = store.rows(
+        conn,
+        "SELECT decision_id, sensor_id, donor_sensor_id, bucket_utc, value,"
+        " donor_source_row, reason, approved_at FROM substitutions"
+        " WHERE run_id = ? ORDER BY sensor_id, bucket_utc",
+        (run_id,),
+    )
+    substitutions = [dict(item) for item in substitution_rows]
     return manifest.build_manifest(
         run_id=row["run_id"],
         key=row["run_key"],
@@ -131,6 +139,7 @@ def manifest_of(conn, run_id: str) -> dict | None:
         counts=json.loads(row["counts_json"]),
         totals=json.loads(row["totals_json"]),
         elapsed_ms=row["elapsed_ms"],
+        substitutions=substitutions,
     )
 
 

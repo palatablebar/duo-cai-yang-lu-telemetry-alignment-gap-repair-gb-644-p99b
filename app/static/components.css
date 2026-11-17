@@ -149,6 +149,10 @@ table.sheet-grid.wide {
   color: var(--bad);
 }
 
+.tag.sub {
+  color: var(--info);
+}
+
 .tag.quiet {
   color: var(--ink-muted);
 }
@@ -350,4 +354,13 @@ select:focus-visible,
   .scroll {
     border-color: #000;
   }
+}
+
+/* 替测核对表单 */
+.sub-form {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
 }

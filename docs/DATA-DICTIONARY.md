@@ -56,3 +56,29 @@
 | 仅表头 | `HEADER_ONLY` | 声明了列但没有数据行 |
 
 三种空态都会生成批次，四账按 0 对 0 判平，结论码显示在总览页。
+
+## 网格状态
+
+| 状态 | 含义 | 值来源 | 计入窗口实有 |
+|---|---|---|---|
+| `OBSERVED` | 原测点实采 | 本传感器采纳样本 | 是 |
+| `FILLED` | 策略补齐（hold/linear，≤3 桶） | 推导插值，不回流采纳合计 | 否 |
+| `GAP` | 缺口（超限或边缘无锚） | 无值 | 否 |
+| `SUBSTITUTED` | 人工批准的邻表替测 | 邻表同分钟实采值，逐桶留来源 | 是 |
+
+网格账：`应有桶 = OBSERVED + FILLED + GAP + SUBSTITUTED`。
+
+## 替测（M8）
+
+- 触发前提：目标桶当前必须是 `GAP`；`OBSERVED` / `FILLED` 桶拒绝替测（`SUBSTITUTE_NOT_GAP`）。
+- 候选核对五项，任一不过即 `eligible=false`，不开放批准：
+  1. 量程：契约 `low/high` 完全相同（`SUBSTITUTE_RANGE_MISMATCH`）；
+  2. 单位：归一后相同（`SUBSTITUTE_UNIT_MISMATCH`）；
+  3. 采样率：`rate_minutes` 相同（`SUBSTITUTE_RATE_MISMATCH`）；
+  4. 时段重叠：每个缺口桶在邻表同一分钟桶都有采纳样本（`SUBSTITUTE_NO_DONOR`）；
+  5. 读数差异：两表共同实采分钟桶的最大绝对差 ÷ 量程跨度 ≤ `SUBSTITUTE_RATE_TOLERANCE`（默认 `0.1`，`SUBSTITUTE_DIFF_TOO_LARGE`）。
+- 批准落账：网格行 `sensor_id` 不变（原测点身份），状态转 `SUBSTITUTED`、原因码 `SUBSTITUTED_NEIGHBOR`，新增 `donor_sensor_id` 与 `donor_source_row`；`substitutions` 表逐桶记录决定号、邻表、来源行、批准时刻与批准前原因码 `prior_reason`。
+- 决定号 `decision_id` 由 `(run_id, sensor_id, donor_sensor_id, 排序后桶集合)` 哈希派生；同决定重跑返回 `reused=true`，不新增网格行、留痕行或决定头。
+- 整个批准在一个事务内：任一桶校验失败或落账影响行数为 0 即回滚，缺口与计数恢复原状。
+- 撤销：按 `prior_reason` 把每个替测桶还原成原 `GAP`（值与邻表字段清空），删除留痕行，决定头置 `REVOKED` 保留审计；窗口与四账同步重算。
+- 数值纪律：替测值合计 `substituted_sum` 单列，不进 `accepted_sum` / `observed_sum`，`grid_sum = observed_sum + filled_sum` 维持不变。

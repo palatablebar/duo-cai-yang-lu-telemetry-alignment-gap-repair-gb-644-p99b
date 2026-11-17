@@ -46,6 +46,17 @@ _REASONS = (
     Reason("GAP_TOO_LONG", "缺口超限", False),
     Reason("EDGE_NO_ANCHOR", "边缘无锚点", False),
     Reason("PARTIAL_COVERAGE", "覆盖不足", False),
+    # —— 替测层（M8） ——
+    Reason("SUBSTITUTED_NEIGHBOR", "替测·邻表", False),
+    Reason("SUBSTITUTE_RANGE_MISMATCH", "量程不一致", True),
+    Reason("SUBSTITUTE_RATE_MISMATCH", "采样率不一致", True),
+    Reason("SUBSTITUTE_UNIT_MISMATCH", "单位不一致", True),
+    Reason("SUBSTITUTE_NO_DONOR", "邻表无重叠读数", True),
+    Reason("SUBSTITUTE_DIFF_TOO_LARGE", "读数差异超限", True),
+    Reason("SUBSTITUTE_NOT_GAP", "目标桶不是缺口", True),
+    Reason("SUBSTITUTE_SELF_DONOR", "邻表是原测点自身", True),
+    Reason("SUBSTITUTE_DUPLICATE_BUCKET", "替测桶重复", True),
+    Reason("SUBSTITUTE_NOT_FOUND", "替测决定不存在", True),
 )
 
 REASONS = {item.code: item for item in _REASONS}

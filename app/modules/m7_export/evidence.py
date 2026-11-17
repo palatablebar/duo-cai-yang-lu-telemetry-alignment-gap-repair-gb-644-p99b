@@ -41,6 +41,19 @@ def cell(conn, run_id: str, sensor_id: str, bucket_utc: str) -> dict | None:
             (run_id, sensor_id, bucket_utc),
         )
     ]
+    substitution = store.one(
+        conn,
+        "SELECT * FROM substitutions WHERE run_id = ? AND sensor_id = ? AND bucket_utc = ?",
+        (run_id, sensor_id, bucket_utc),
+    )
+    donor_sample = None
+    if substitution is not None:
+        donor_sample = store.one(
+            conn,
+            "SELECT source_row, bucket_utc, value, unit, quality FROM samples"
+            " WHERE run_id = ? AND sensor_id = ? AND bucket_utc = ?",
+            (run_id, substitution["donor_sensor_id"], bucket_utc),
+        )
     return {
         "run_id": run_id,
         "sensor_id": grid["sensor_id"],
@@ -58,6 +71,16 @@ def cell(conn, run_id: str, sensor_id: str, bucket_utc: str) -> dict | None:
         "flags": (sample["flags"] if sample else "") or "",
         "quarantine": quarantined,
         "duplicates": duplicates,
+        "substitution": None
+        if substitution is None
+        else {
+            "decision_id": substitution["decision_id"],
+            "donor_sensor_id": substitution["donor_sensor_id"],
+            "donor_source_row": substitution["donor_source_row"],
+            "donor_value": substitution["value"],
+            "approved_at": substitution["approved_at"],
+            "donor_sample": dict(donor_sample) if donor_sample else None,
+        },
     }
 
 

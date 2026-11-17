@@ -94,3 +94,45 @@ def test_watermark_monotonic_across_replay(conn, run_main):
     ]
     assert late_before == late_after
     assert len(late_before) == MAIN["late"]
+
+
+def test_substitution_overlay_keeps_grid_account_conserved(conn):
+    """替测只改变状态分布：批准前后网格总行数守恒，四账始终相等。"""
+    from app.modules.m8_substitute import workflow
+
+    run = service.execute_run(conn, sample="substitute_humidity", offsets="device_offsets")
+    run_id = run["run_id"]
+    total_before = store.value(conn, "SELECT COUNT(*) FROM grid", (), 0)
+    samples_before = store.value(conn, "SELECT COUNT(*) FROM samples", (), 0)
+
+    decision = workflow.approve(conn, run_id, "TH-01", "TH-02")
+    mid = service.history.get(conn, run_id)
+    assert mid["counts"]["grid_points"] == total_before
+    assert service.reconcile_view(conn, run_id)["balanced"] is True
+
+    workflow.revoke(conn, run_id, decision["decision_id"])
+    after = service.history.get(conn, run_id)
+    assert after["counts"]["grid_points"] == total_before
+    assert store.value(conn, "SELECT COUNT(*) FROM samples", (), 0) == samples_before
+    assert service.reconcile_view(conn, run_id)["balanced"] is True
+    # 撤销后网格逐行回到批准前状态。
+    assert after["counts"]["gaps"] == run["counts"]["gaps"]
+    assert after["counts"]["substituted"] == 0
+
+
+def test_substitution_rerun_creates_no_extra_rows(conn):
+    """同一替测决定连跑三次，留痕表与决定头都只有一份。"""
+    from app.modules.m8_substitute import workflow
+
+    run = service.execute_run(conn, sample="substitute_humidity", offsets="device_offsets")
+    first = workflow.approve(conn, run["run_id"], "TH-01", "TH-02")
+    workflow.approve(conn, run["run_id"], "TH-01", "TH-02")
+    workflow.approve(conn, run["run_id"], "TH-01", "TH-02", first["buckets"])
+    assert store.value(conn, "SELECT COUNT(*) FROM substitution_decisions", (), 0) == 1
+    assert store.value(conn, "SELECT COUNT(*) FROM substitutions", (), 0) == 4
+    assert store.value(
+        conn,
+        "SELECT COUNT(*) FROM grid WHERE run_id = ? AND state = 'SUBSTITUTED'",
+        (run["run_id"],),
+        0,
+    ) == 4

@@ -40,6 +40,7 @@ docker compose exec -T app python -m pytest -q
 | `crlf_quoted` | `sample_data/crlf_quoted.csv` | CRLF、引号内换行、重复表头分段 |
 | `gb18030` | `sample_data/telemetry_gb18030.csv` | GB18030 与中文表头 |
 | `empty` | `sample_data/empty_sample.csv` | 0 字节 |
+| `substitute_humidity` | `sample_data/substitute_humidity.csv` | TH-01 检修停报 4 桶，同量程 TH-02 同期在采，用于替测批准演练 |
 
 偏移表固定用 `device_offsets.csv`；其中 `AM-06` 故意留两段重叠区间。
 
@@ -62,8 +63,21 @@ docker compose exec -T app python -m pytest -q
 | GET | `/api/export/grid.csv` | 网格 CSV |
 | GET | `/api/export/accepted.csv` | 采纳 CSV |
 | GET | `/api/export/quarantine.csv` | 隔离 CSV |
-| GET | `/api/export/manifest.json` | 运行清单 |
+| GET | `/api/export/manifest.json` | 运行清单（含替测留痕 `substitutions`） |
 | GET | `/api/export/evidence` | 单元格证据，参数 `sensor_id` 与 `bucket` |
+| GET | `/api/substitute/gap-sensors` | 仍有缺口的传感器与同量程邻表清单 |
+| GET | `/api/substitute/candidates` | 单候选核对，参数 `sensor_id`、`donor_sensor_id` |
+| POST | `/api/substitute/candidate-list` | 枚举某原测点的全部候选邻表与核对结论 |
+| POST | `/api/substitute/approve` | 批准替测，body `{"sensor_id","donor_sensor_id","buckets"?}`，同决定重跑幂等 |
+| POST | `/api/substitute/revoke` | 撤销替测，body `{"decision_id"}`，按留痕还原原缺口 |
+| GET | `/api/substitute/decisions` | 替测决定头与逐桶来源清单 |
+
+## 替测操作纪律
+
+1. 先在 `/gaps` 页选原测点与邻表点「核对」，五项（量程、单位、采样率、时段重叠、读数差）全部通过才会开放批准按钮。
+2. 批准前原测点网格保持 `GAP`；批准后行身份仍是原测点，状态转 `SUBSTITUTED`，网格 CSV 新增 `donor_sensor_id`、`donor_source_row` 两列。
+3. 批准是事务操作：任一桶校验失败整体回滚，缺口原样保留；同一请求重复提交返回同一 `decision_id` 且不新增行。
+4. 撤销只把决定头置 `REVOKED` 并清空留痕行，网格按 `prior_reason` 还原；需要重新替测时按当前缺口重新发起批准。
 
 ## 常见失败
 
@@ -73,3 +87,6 @@ docker compose exec -T app python -m pytest -q
 | 400 `HEADER_MISSING` | 输入列名不在别名表内 | 在 `app/modules/m1_intake/sniff.py` 的别名表补一条 |
 | 404 `RUN_NOT_FOUND` | 指定了不存在的批次号 | 省略 `run_id` 参数即取最近批次 |
 | 四账「不平」 | 有人改了落库行 | 用 `POST /api/grid` 与 `POST /api/gaps/repair` 重新推导比对，差额在 `/batches` 可见 |
+| 400 `SUBSTITUTE_RANGE_MISMATCH` 等 | 邻表量程/单位/采样率不一致、无重叠读数或差异超阈 | 看 `/api/substitute/candidates` 返回的 `checks` 明细，换邻表或维持缺口 |
+| 400/409 `SUBSTITUTE_NOT_GAP` | 目标桶不是缺口（已实采/已补齐/已替测） | 只对当前 `GAP` 桶发起替测；已替测桶先撤销再改 |
+| 替测后 `POST /api/gaps/repair` 不通过 | 替测桶缺少 `substitutions` 留痕或基线状态不符 | 查 `orphan_substituted`，用撤销接口还原后重新批准 |

@@ -146,6 +146,7 @@ def execute_run(conn, *, sample: str, offsets: str) -> dict:
         "grid_points": repaired.total,
         "windows": len(analysis.windows) if analysis else 0,
         "windows_stored": 0,
+        "substituted": 0,
         "blank_lines": loaded.blank_lines,
         "segments": loaded.segments,
         "truncated": 1 if loaded.truncated else 0,
@@ -157,6 +158,7 @@ def execute_run(conn, *, sample: str, offsets: str) -> dict:
         "accepted_sum": str(_q(accepted_sum)),
         "observed_sum": str(_q(observed_sum)),
         "filled_sum": str(_q(filled_sum)),
+        "substituted_sum": str(_q(Decimal("0"))),
         "grid_sum": str(_q(observed_sum + filled_sum)),
     }
 
@@ -239,6 +241,7 @@ def _stages(counts: dict) -> list[dict]:
         {"name": "网格点", "value": counts.get("grid_points", 0), "unit": "个"},
         {"name": "补齐", "value": counts.get("filled", 0), "unit": "个"},
         {"name": "缺口", "value": counts.get("gaps", 0), "unit": "个"},
+        {"name": "替测", "value": counts.get("substituted", 0), "unit": "个"},
         {"name": "窗口", "value": counts.get("windows", 0), "unit": "个"},
     ]
 
@@ -302,8 +305,8 @@ def verify_grid(conn, run_id: str) -> dict:
     _, repaired = _rebuild(conn, run_id)
     stored = store.rows(
         conn,
-        "SELECT sensor_id, bucket_utc, value, state, reason FROM grid"
-        " WHERE run_id = ? ORDER BY sensor_id, bucket_utc",
+        "SELECT sensor_id, bucket_utc, value, state, reason, donor_sensor_id, donor_source_row"
+        " FROM grid WHERE run_id = ? ORDER BY sensor_id, bucket_utc",
         (run_id,),
     )
     derived = [
@@ -316,18 +319,62 @@ def verify_grid(conn, run_id: str) -> dict:
         }
         for point in repaired.points
     ]
+    # 替测是人工批准的覆盖层：推导基线里这些桶仍是 GAP，落库为 SUBSTITUTED 属预期；
+    # 但每个 SUBSTITUTED 桶必须能在 substitutions 里追到替测来源，否则判漂移。
+    substituted = {
+        (row["sensor_id"], row["bucket_utc"]): dict(row)
+        for row in store.rows(
+            conn,
+            "SELECT * FROM grid WHERE run_id = ? AND state = 'SUBSTITUTED'",
+            (run_id,),
+        )
+    }
+    backing = {
+        (row["sensor_id"], row["bucket_utc"])
+        for row in store.rows(
+            conn, "SELECT sensor_id, bucket_utc FROM substitutions WHERE run_id = ?", (run_id,)
+        )
+    }
+    orphan_backing = [key for key in substituted if key not in backing]
     mismatches = []
     for index, item in enumerate(derived):
         counterpart = dict(stored[index]) if index < len(stored) else None
-        if counterpart != item:
+        if counterpart is None:
             mismatches.append({"index": index, "derived": item, "stored": counterpart})
-            if len(mismatches) >= 20:
-                break
+            continue
+        key = (counterpart["sensor_id"], counterpart["bucket_utc"])
+        if key in substituted:
+            if item["state"] != "GAP":
+                mismatches.append(
+                    {"index": index, "derived": item, "stored": counterpart,
+                     "note": "替测桶的推导基线应为 GAP"}
+                )
+            elif counterpart["donor_sensor_id"] is None or counterpart["donor_source_row"] is None:
+                mismatches.append(
+                    {"index": index, "derived": item, "stored": counterpart,
+                     "note": "替测桶缺少来源留痕"}
+                )
+            continue
+        counterpart_base = {
+            field_: counterpart[field_]
+            for field_ in ("sensor_id", "bucket_utc", "value", "state", "reason")
+        }
+        if counterpart_base != item:
+            mismatches.append({"index": index, "derived": item, "stored": counterpart_base})
+        if len(mismatches) >= 20:
+            break
+    verified = (
+        not mismatches
+        and not orphan_backing
+        and len(derived) == len(stored)
+    )
     return {
         "run_id": run_id,
-        "verified": not mismatches and len(derived) == len(stored),
+        "verified": verified,
         "derived_points": len(derived),
         "stored_points": len(stored),
+        "substituted": len(substituted),
+        "orphan_substituted": [list(key) for key in orphan_backing],
         "counts": repaired.counts(),
         "mismatches": mismatches,
     }
@@ -345,16 +392,30 @@ def verify_gaps(conn, run_id: str) -> dict:
     stored_gaps = int(
         store.value(conn, "SELECT COUNT(*) FROM grid WHERE run_id = ? AND state = 'GAP'", (run_id,), 0)
     )
+    stored_substituted = int(
+        store.value(conn, "SELECT COUNT(*) FROM grid WHERE run_id = ? AND state = 'SUBSTITUTED'", (run_id,), 0)
+    )
+    backing = int(
+        store.value(conn, "SELECT COUNT(*) FROM substitutions WHERE run_id = ?", (run_id,), 0)
+    )
+    # 替测只覆盖基线缺口：基线缺口数 = 落库缺口 + 替测桶，且每桶都有来源留痕。
     verified = (
         derived_windows == stored_windows
         and repaired.filled == stored_filled
-        and repaired.gaps == stored_gaps
+        and repaired.gaps == stored_gaps + stored_substituted
+        and backing == stored_substituted
     )
     return {
         "run_id": run_id,
         "verified": verified,
         "derived": {"filled": repaired.filled, "gaps": repaired.gaps, "windows": derived_windows},
-        "stored": {"filled": stored_filled, "gaps": stored_gaps, "windows": stored_windows},
+        "stored": {
+            "filled": stored_filled,
+            "gaps": stored_gaps,
+            "substituted": stored_substituted,
+            "substitution_backing": backing,
+            "windows": stored_windows,
+        },
         "runs": {"plans": len(repaired.plans)},
     }
 

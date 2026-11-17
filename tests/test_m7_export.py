@@ -34,6 +34,8 @@ def test_grid_csv_header_and_rows(conn, run_main):
         "reason",
         "source_row",
         "flags",
+        "donor_sensor_id",
+        "donor_source_row",
     ]
     assert rows[0]["row_no"] == "1"
     assert rows[0]["bucket_utc"].endswith("Z")

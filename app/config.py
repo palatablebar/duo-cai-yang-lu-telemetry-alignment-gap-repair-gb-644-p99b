@@ -24,6 +24,11 @@ MAX_FILL_BUCKETS = 3
 PARTIAL_COVERAGE = "0.8"
 LATE_WINDOW_MINUTES = 15
 
+# 替测（同站邻表补洞）：同量程、同单位、同采样率才允许候选；
+# 重叠时段读数差占量程比例超过该阈值即判差异过大，不允许批准。
+SUBSTITUTE_RATE_TOLERANCE = "0.1"
+SUBSTITUTE_REASON = "SUBSTITUTED_NEIGHBOR"
+
 # 精度
 VALUE_PLACES = 3
 COVERAGE_PLACES = 3
@@ -59,6 +64,7 @@ SAMPLES = {
     "crlf_quoted": ("crlf_quoted.csv", "换行混用"),
     "gb18030": ("telemetry_gb18030.csv", "中文表头"),
     "empty": ("empty_sample.csv", "空文件"),
+    "substitute_humidity": ("substitute_humidity.csv", "湿度替测（检修停报）"),
 }
 
 OFFSET_SAMPLES = {

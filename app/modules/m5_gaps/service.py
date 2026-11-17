@@ -39,7 +39,6 @@ def persist_grid(conn, run_id: str, points) -> int:
         payload,
     )
 
-
 def persist_windows(conn, run_id: str, rows) -> int:
     payload = [
         (
@@ -104,7 +103,7 @@ def gaps_view(conn, run_id: str) -> dict:
     counters: dict[str, int] = {}
     for index, row in enumerate(rows):
         counters[row["sensor_id"]] = counters.get(row["sensor_id"], 0) + 1
-        if row["state"] == "OBSERVED":
+        if row["state"] == "OBSERVED" or row["state"] == "SUBSTITUTED":
             continue
         spec = contract.spec(row["sensor_id"])
         indexed.append(
@@ -138,6 +137,7 @@ def gaps_view(conn, run_id: str) -> dict:
     filled = sum(1 for row in indexed if row["state"] == "FILLED")
     gaps = sum(1 for row in indexed if row["state"] == "GAP")
     partial = sum(1 for row in windows if row["state"] == "PARTIAL")
+    substituted = sum(1 for row in rows if row["state"] == "SUBSTITUTED")
     return {
         "runs": group_runs(indexed),
         "filled": [row for row in indexed if row["state"] == "FILLED"],
@@ -145,6 +145,7 @@ def gaps_view(conn, run_id: str) -> dict:
         "summary": {
             "filled": filled,
             "gaps": gaps,
+            "substituted": substituted,
             "windows": len(windows),
             "partial": partial,
             "ok": len(windows) - partial,
@@ -164,5 +165,6 @@ def summary(conn, run_id: str) -> dict:
         "observed": counts.get("OBSERVED", 0),
         "filled": counts.get("FILLED", 0),
         "gaps": counts.get("GAP", 0),
+        "substituted": counts.get("SUBSTITUTED", 0),
         "total": sum(counts.values()),
     }

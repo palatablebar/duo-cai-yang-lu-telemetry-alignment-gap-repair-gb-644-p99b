@@ -36,7 +36,12 @@ def reconcile_lines(counts: dict, totals: dict) -> list[ReconcileLine]:
     accepted = _dec(counts.get("accepted")) + _dec(counts.get("duplicates")) + _dec(
         counts.get("quarantined")
     )
-    observed = _dec(counts.get("observed")) + _dec(counts.get("filled")) + _dec(counts.get("gaps"))
+    observed = (
+        _dec(counts.get("observed"))
+        + _dec(counts.get("filled"))
+        + _dec(counts.get("gaps"))
+        + _dec(counts.get("substituted"))
+    )
     lines = [
         ReconcileLine(
             line_no=1,
@@ -50,7 +55,7 @@ def reconcile_lines(counts: dict, totals: dict) -> list[ReconcileLine]:
             name="网格账",
             expected=_dec(counts.get("expected_buckets")),
             actual=observed,
-            note="应有 = 实有 + 补齐 + 缺口",
+            note="应有 = 实有 + 补齐 + 缺口 + 替测",
         ),
         ReconcileLine(
             line_no=3,

@@ -15,7 +15,6 @@
     ["偏移秒", "offset_seconds"],
     ["标记", "flags"]
   ];
-
   function render(payload) {
     const body = document.getElementById("inspect-body");
     const panel = document.getElementById("inspect");
@@ -41,6 +40,23 @@
           return row.code + " / " + (row.raw_value || "");
         })
         .join("；");
+      body.appendChild(term);
+      body.appendChild(desc);
+    }
+    if (payload.substitution) {
+      const sub = payload.substitution;
+      const term = document.createElement("dt");
+      term.textContent = "替测来源";
+      const desc = document.createElement("dd");
+      desc.textContent =
+        sub.donor_sensor_id +
+        " 第 " +
+        sub.donor_source_row +
+        " 行（决定 " +
+        sub.decision_id +
+        "，批准于 " +
+        sub.approved_at +
+        "）";
       body.appendChild(term);
       body.appendChild(desc);
     }

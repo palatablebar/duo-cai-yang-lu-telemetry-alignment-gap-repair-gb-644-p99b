@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% block title %}缺口{% endblock %}
-{% block statusline %}{% if view %}缺口 {{ view.summary.gaps }} 桶{% else %}无运行{% endif %}{% endblock %}
+{% block statusline %}{% if view %}缺口 {{ view.summary.gaps }} 桶 / 替测 {{ view.summary.substituted }} 桶{% else %}无运行{% endif %}{% endblock %}
 
 {% block body %}
 <section class="sheet-head">
   <h1 class="h1">缺口修复</h1>
   <div class="head-tools">
-    <span class="head-meta mono">补齐上限 3 桶</span>
+    <span class="head-meta mono">补齐上限 3 桶 · 替测差阈 {{ substitute.tolerance if substitute else "0.1" }}</span>
     <a class="link" href="/api/gaps">缺口 JSON</a>
   </div>
 </section>
@@ -26,9 +26,10 @@
       <tbody>
         <tr><th class="gutter">1</th><td tabindex="0">补齐桶</td><td tabindex="0" class="num">{{ view.summary.filled }}</td></tr>
         <tr><th class="gutter">2</th><td tabindex="0">缺口桶</td><td tabindex="0" class="num">{{ view.summary.gaps }}</td></tr>
-        <tr><th class="gutter">3</th><td tabindex="0">窗口</td><td tabindex="0" class="num">{{ view.summary.windows }}</td></tr>
-        <tr><th class="gutter">4</th><td tabindex="0">覆盖不足窗口</td><td tabindex="0" class="num">{{ view.summary.partial }}</td></tr>
-        <tr><th class="gutter">5</th><td tabindex="0">覆盖达标窗口</td><td tabindex="0" class="num">{{ view.summary.ok }}</td></tr>
+        <tr><th class="gutter">3</th><td tabindex="0">替测桶（邻表补洞）</td><td tabindex="0" class="num">{{ view.summary.substituted }}</td></tr>
+        <tr><th class="gutter">4</th><td tabindex="0">窗口</td><td tabindex="0" class="num">{{ view.summary.windows }}</td></tr>
+        <tr><th class="gutter">5</th><td tabindex="0">覆盖不足窗口</td><td tabindex="0" class="num">{{ view.summary.partial }}</td></tr>
+        <tr><th class="gutter">6</th><td tabindex="0">覆盖达标窗口</td><td tabindex="0" class="num">{{ view.summary.ok }}</td></tr>
       </tbody>
     </table>
   </div>
@@ -122,7 +123,97 @@
   </div>
 </section>
 {% endif %}
+
+<section class="block" id="substitute-block">
+  <div class="block-head">
+    <h2 class="h2">替测核对（同站邻表补洞）</h2>
+    <span class="block-meta mono">未批准前原测点保持缺口</span>
+  </div>
+  {% if substitute and substitute.gap_sensors %}
+  <div class="sub-form">
+    <label class="field">
+      <span class="field-k">原测点</span>
+      <select id="sub-target">
+        {% for item in substitute.gap_sensors %}
+        <option value="{{ item.sensor_id }}">{{ item.sensor_id }}（缺口 {{ item.gap_buckets }} 桶 · {{ item.unit }}）</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="field">
+      <span class="field-k">候选邻表</span>
+      <select id="sub-donor"></select>
+    </label>
+    <button class="btn" type="button" id="sub-check">核对时段 / 量程 / 读数差</button>
+    <span class="hint" id="sub-hint"></span>
+  </div>
+  <div class="scroll">
+    <table class="sheet-grid" id="sub-check-table" data-sheet hidden>
+      <thead>
+        <tr class="cols"><th class="gutter">#</th><th>核对项</th><th>结果</th><th>明细</th></tr>
+      </thead>
+      <tbody id="sub-check-body"></tbody>
+    </table>
+  </div>
+  <div class="sub-form">
+    <button class="btn" type="button" id="sub-approve" disabled>批准替测（保留原测点身份，逐桶留来源）</button>
+  </div>
+  {% else %}
+  <section class="empty"><p class="empty-text">当前没有待替测的缺口桶。</p></section>
+  {% endif %}
+
+  {% if substitute and substitute.decisions %}
+  <div class="block-head"><h3 class="h2">替测决定</h3><span class="block-meta mono">{{ substitute.decisions|length }} 条</span></div>
+  <div class="scroll">
+    <table class="sheet-grid" data-sheet>
+      <thead>
+        <tr class="letters"><th class="gutter"></th><th>A</th><th>B</th><th>C</th><th class="num">D</th><th>E</th><th>F</th><th>G</th></tr>
+        <tr class="cols"><th class="gutter">#</th><th>决定号</th><th>原测点</th><th>邻表</th><th class="num">桶数</th><th>状态</th><th>最大差</th><th>批准时刻</th></tr>
+      </thead>
+      <tbody>
+        {% for item in substitute.decisions %}
+        <tr>
+          <th class="gutter">{{ loop.index }}</th>
+          <td tabindex="0" class="mono">{{ item.decision_id }}</td>
+          <td tabindex="0" class="mono">{{ item.sensor_id }}</td>
+          <td tabindex="0" class="mono">{{ item.donor_sensor_id }}</td>
+          <td tabindex="0" class="num">{{ item.buckets }}</td>
+          <td tabindex="0"><span class="tag {{ 'sub' if item.status == 'APPROVED' else 'quiet' }}">{{ item.status }}</span></td>
+          <td tabindex="0" class="num">{{ item.max_diff or "—" }}</td>
+          <td tabindex="0" class="mono">{{ item.approved_at|f_utc("%m-%d %H:%M") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="block-meta mono">替测原因码：SUBSTITUTED_NEIGHBOR（替测·邻表），网格行 sensor_id 始终为原测点。</p>
+  {% endif %}
+
+  {% if substitute and substitute.substituted %}
+  <div class="block-head"><h3 class="h2">替测值与来源</h3><span class="block-meta mono">{{ substitute.substituted|length }} 桶</span></div>
+  <div class="scroll">
+    <table class="sheet-grid" data-sheet>
+      <thead>
+        <tr class="letters"><th class="gutter"></th><th>A</th><th>B</th><th class="num">C</th><th>D</th><th class="num">E</th></tr>
+        <tr class="cols"><th class="gutter">#</th><th>原测点</th><th>桶</th><th class="num">替测值</th><th>邻表</th><th class="num">邻表来源行</th></tr>
+      </thead>
+      <tbody>
+        {% for row in substitute.substituted %}
+        <tr>
+          <th class="gutter">{{ loop.index }}</th>
+          <td tabindex="0" class="mono">{{ row.sensor_id }}</td>
+          <td tabindex="0" class="mono">{{ row.bucket_utc|f_utc("%m-%d %H:%M") }}</td>
+          <td tabindex="0" class="num">{{ row.value|f_num(row.places) }}</td>
+          <td tabindex="0" class="mono">{{ row.donor_sensor_id }}</td>
+          <td tabindex="0" class="num">{{ row.donor_source_row }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
 {% else %}
 <section class="empty"><p class="empty-text">还没有缺口结果。</p></section>
 {% endif %}
 {% endblock %}
+{% block scripts %}<script src="/static/substitute.js"></script>{% endblock %}

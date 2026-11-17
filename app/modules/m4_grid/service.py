@@ -100,13 +100,13 @@ def grid_view(conn, run_id: str) -> dict:
         spec = contract.spec(row["sensor_id"])
         item["places"] = spec.places if spec else 3
         points.append(item)
-    letters = "ABCDEFGH"
+    letters = "ABCDEFGHIJ"
     return {
         "total": len(rows),
         "points": points[:400],
         "states": states,
         "sensors": sorted({row["sensor_id"] for row in rows}),
-        "letters": list(letters[:8]),
+        "letters": list(letters[:10]),
     }
 
 

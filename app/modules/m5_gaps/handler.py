@@ -5,9 +5,10 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
-from app import errors, store, web
+from app import config, errors, store, web
 from app.modules.m6_batches import history
 from app.modules.m6_batches import service as batch_service
+from app.modules.m8_substitute import service as substitute_service
 
 from . import service
 
@@ -20,9 +21,17 @@ def gaps_page(request: Request):
     try:
         run = history.latest(conn)
         view = service.gaps_view(conn, run["run_id"]) if run else None
+        substitute = None
+        if run:
+            substitute = {
+                "gap_sensors": substitute_service.gap_sensors(conn, run["run_id"]),
+                "decisions": substitute_service.decisions(conn, run["run_id"]),
+                "substituted": substitute_service.substituted(conn, run["run_id"]),
+                "tolerance": config.SUBSTITUTE_RATE_TOLERANCE,
+            }
     finally:
         conn.close()
-    return web.render(request, "gaps.html", "gaps", view=view)
+    return web.render(request, "gaps.html", "gaps", view=view, substitute=substitute)
 
 
 @router.get("/api/gaps")

@@ -66,6 +66,7 @@ def build_manifest(
     counts: dict,
     totals: dict,
     elapsed_ms: int,
+    substitutions: list[dict] | None = None,
 ) -> dict:
     return {
         "run_id": run_id,
@@ -82,4 +83,5 @@ def build_manifest(
         "totals": totals,
         "elapsed_ms": elapsed_ms,
         "window_rule": "[start, end)",
+        "substitutions": substitutions or [],
     }

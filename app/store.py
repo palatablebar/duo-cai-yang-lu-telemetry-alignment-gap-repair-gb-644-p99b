@@ -97,7 +97,36 @@ CREATE TABLE IF NOT EXISTS grid (
     state      TEXT NOT NULL,
     reason     TEXT NOT NULL,
     fill_policy TEXT NOT NULL,
-    source_row INTEGER
+    source_row INTEGER,
+    donor_sensor_id TEXT,
+    donor_source_row INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS substitutions (
+    run_id     TEXT NOT NULL,
+    decision_id TEXT NOT NULL,
+    sensor_id  TEXT NOT NULL,
+    donor_sensor_id TEXT NOT NULL,
+    bucket_utc TEXT NOT NULL,
+    value      TEXT NOT NULL,
+    donor_source_row INTEGER NOT NULL,
+    reason     TEXT NOT NULL,
+    approved_at TEXT NOT NULL,
+    prior_reason TEXT NOT NULL,
+    PRIMARY KEY (run_id, decision_id, sensor_id, bucket_utc)
+);
+
+CREATE TABLE IF NOT EXISTS substitution_decisions (
+    run_id     TEXT NOT NULL,
+    decision_id TEXT NOT NULL,
+    sensor_id  TEXT NOT NULL,
+    donor_sensor_id TEXT NOT NULL,
+    status     TEXT NOT NULL,
+    buckets    INTEGER NOT NULL,
+    tolerance  TEXT NOT NULL,
+    max_diff   TEXT NOT NULL,
+    approved_at TEXT NOT NULL,
+    PRIMARY KEY (run_id, decision_id)
 );
 
 CREATE TABLE IF NOT EXISTS windows (
@@ -127,6 +156,9 @@ CREATE INDEX IF NOT EXISTS idx_grid_run ON grid(run_id);
 CREATE INDEX IF NOT EXISTS idx_windows_run ON windows(run_id);
 CREATE INDEX IF NOT EXISTS idx_reconcile_run ON reconcile(run_id);
 CREATE INDEX IF NOT EXISTS idx_duplicates_run ON duplicates(run_id);
+CREATE INDEX IF NOT EXISTS idx_grid_state ON grid(run_id, state);
+CREATE INDEX IF NOT EXISTS idx_substitutions_run ON substitutions(run_id);
+CREATE INDEX IF NOT EXISTS idx_decisions_run ON substitution_decisions(run_id);
 """
 
 
